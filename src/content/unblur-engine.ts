@@ -1,6 +1,7 @@
 import {
   PROCESSED_CONTAINER_ATTR,
   PROCESSED_MEDIA_ATTR,
+  PROCESSED_MEDIA_SOURCE_ATTR,
   STYLE_ELEMENT_ID,
 } from '../shared/constants';
 
@@ -459,8 +460,13 @@ export function hideStickyAside(): void {
 }
 
 export function clearProcessingMarkers(): void {
-  document.querySelectorAll(`[${PROCESSED_MEDIA_ATTR}], [${PROCESSED_CONTAINER_ATTR}]`).forEach((node) => {
-    node.removeAttribute(PROCESSED_MEDIA_ATTR);
-    node.removeAttribute(PROCESSED_CONTAINER_ATTR);
-  });
+  document
+    .querySelectorAll(
+      `[${PROCESSED_MEDIA_ATTR}], [${PROCESSED_MEDIA_SOURCE_ATTR}], [${PROCESSED_CONTAINER_ATTR}]`,
+    )
+    .forEach((node) => {
+      node.removeAttribute(PROCESSED_MEDIA_ATTR);
+      node.removeAttribute(PROCESSED_MEDIA_SOURCE_ATTR);
+      node.removeAttribute(PROCESSED_CONTAINER_ATTR);
+    });
 }

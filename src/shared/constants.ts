@@ -14,6 +14,7 @@ export const LEGACY_STORAGE_KEYS = [
 ] as const;
 
 export const PROCESSED_MEDIA_ATTR = 'data-mobbin-viewer-media';
+export const PROCESSED_MEDIA_SOURCE_ATTR = 'data-mobbin-viewer-source';
 export const PROCESSED_CONTAINER_ATTR = 'data-mobbin-viewer-container';
 export const STYLE_ELEMENT_ID = 'mobbin-viewer-runtime-styles';
 export const LIGHTBOX_ID = 'mobbin-viewer-lightbox';

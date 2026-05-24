@@ -1,7 +1,8 @@
-﻿import { PROCESSED_MEDIA_ATTR } from '../shared/constants';
+import { PROCESSED_MEDIA_ATTR, PROCESSED_MEDIA_SOURCE_ATTR } from '../shared/constants';
 import {
   convertPosterToVideoSrc,
   isImageRepresentingVideo,
+  isMobbinSignedFileRawImage,
   isMobbinScreenImage,
   isMobbinVideoPoster,
   isMobbinVideoSource,
@@ -30,9 +31,107 @@ function ensureContainerControls(media: HTMLImageElement | HTMLVideoElement): vo
   ensureMediaControls(container, media);
 }
 
+function parseSrcsetCandidate(candidate: string): string {
+  return candidate.trim().split(/\s+/)[0] ?? '';
+}
+
+function getMobbinImageFromSrcset(srcset: string): string {
+  return srcset
+    .split(',')
+    .map(parseSrcsetCandidate)
+    .find((candidate) => isMobbinScreenImage(candidate)) ?? '';
+}
+
+function getImageSource(image: HTMLImageElement): string {
+  const directSource = image.currentSrc || image.src;
+  if (isMobbinScreenImage(directSource)) {
+    return directSource;
+  }
+
+  const srcsetSource = getMobbinImageFromSrcset(image.getAttribute('srcset') ?? '');
+  if (srcsetSource) {
+    return srcsetSource;
+  }
+
+  const picture = image.closest('picture');
+  if (!picture) {
+    return directSource;
+  }
+
+  for (const source of Array.from(picture.querySelectorAll('source[srcset]'))) {
+    const candidate = getMobbinImageFromSrcset(source.getAttribute('srcset') ?? '');
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return directSource;
+}
+
+function normalizeSrcset(srcset: string): string {
+  return srcset
+    .split(',')
+    .map((candidate) => {
+      const trimmed = candidate.trim();
+      const [url, ...descriptors] = trimmed.split(/\s+/);
+
+      if (!url || !isMobbinScreenImage(url)) {
+        return trimmed;
+      }
+
+      return [normalizePresentationImageUrl(url), ...descriptors].join(' ');
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
+function normalizePictureSources(image: HTMLImageElement): void {
+  const picture = image.closest('picture');
+  if (!picture) {
+    return;
+  }
+
+  picture.querySelectorAll('source[srcset]').forEach((source) => {
+    const srcset = source.getAttribute('srcset') ?? '';
+    const normalized = normalizeSrcset(srcset);
+
+    if (normalized !== srcset) {
+      source.setAttribute('srcset', normalized);
+    }
+  });
+}
+
+function applyNormalizedImageSource(image: HTMLImageElement, source: string): void {
+  const normalized = normalizePresentationImageUrl(source);
+  const previousNormalized = image.getAttribute(PROCESSED_MEDIA_SOURCE_ATTR);
+  const normalizedIsRawSignedFile = isMobbinSignedFileRawImage(normalized);
+
+  if (!normalizedIsRawSignedFile) {
+    normalizePictureSources(image);
+  }
+
+  const imageSrcset = image.getAttribute('srcset');
+  if (imageSrcset && !normalizedIsRawSignedFile) {
+    const normalizedSrcset = normalizeSrcset(imageSrcset);
+    if (normalizedSrcset !== imageSrcset) {
+      image.setAttribute('srcset', normalizedSrcset);
+    }
+  }
+
+  if (normalizedIsRawSignedFile) {
+    image.removeAttribute('srcset');
+    image.removeAttribute('sizes');
+  }
+
+  if (previousNormalized !== normalized || image.src !== normalized) {
+    image.src = normalized;
+    image.setAttribute(PROCESSED_MEDIA_SOURCE_ATTR, normalized);
+  }
+}
+
 function convertImageToVideo(image: HTMLImageElement): HTMLVideoElement {
   const video = document.createElement('video');
-  video.src = convertPosterToVideoSrc(image.currentSrc || image.src);
+  video.src = convertPosterToVideoSrc(getImageSource(image));
   video.loop = true;
   video.muted = true;
   video.autoplay = true;
@@ -53,7 +152,7 @@ function convertImageToVideo(image: HTMLImageElement): HTMLVideoElement {
 }
 
 function processImage(image: HTMLImageElement): void {
-  const source = image.currentSrc || image.src;
+  const source = getImageSource(image);
 
   if (!isMobbinScreenImage(source) || isInExcludedPanel(image)) {
     return;
@@ -71,10 +170,7 @@ function processImage(image: HTMLImageElement): void {
     return;
   }
 
-  const normalized = normalizePresentationImageUrl(source);
-  if (normalized !== source) {
-    image.src = normalized;
-  }
+  applyNormalizedImageSource(image, source);
 
   image.setAttribute(PROCESSED_MEDIA_ATTR, 'true');
   removeBlurFromAncestors(image);

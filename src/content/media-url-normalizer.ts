@@ -1,5 +1,9 @@
-﻿const MOBBIN_IMAGE_REGEX =
+const MOBBIN_IMAGE_REGEX =
   /https:\/\/bytescale\.mobbin\.com\/.*?\/(app_screens|content\/sites|app_overview|app_row_preview)\/[^?]+\.(png|jpg|jpeg|webp|mp4)/i;
+const MOBBIN_SIGNED_FILE_IMAGE_REGEX =
+  /https:\/\/bytescale\.mobbin\.com\/.*?\/mobbin\.com\/prod\/file\.webp\?[^#]*\benc=/i;
+const MOBBIN_SIGNED_FILE_IMAGE_PATH_REGEX = /\/image\/mobbin\.com\/prod\/file\.webp$/i;
+const MOBBIN_SIGNED_FILE_RAW_PATH_REGEX = /\/raw\/mobbin\.com\/prod\/file\.webp$/i;
 const MOBBIN_VIDEO_REGEX =
   /https:\/\/bytescale\.mobbin\.com\/.*?\/(app_flow_videos|content\/sites)\/[^?]+\.mp4/i;
 const MOBBIN_VIDEO_HOST_REGEX = /https:\/\/bytescale\.mobbin\.com\//i;
@@ -7,7 +11,48 @@ const MOBBIN_VIDEO_HOST_REGEX = /https:\/\/bytescale\.mobbin\.com\//i;
 const WATERMARK_PATH = '/mobbin.com/prod/watermark/1.0/78e3a61c-21ac-490e-b93d-c7206f6d3bfb';
 
 export function isMobbinScreenImage(url: string): boolean {
-  return Boolean(url) && MOBBIN_IMAGE_REGEX.test(url);
+  return (
+    Boolean(url) &&
+    (MOBBIN_IMAGE_REGEX.test(url) || isMobbinSignedFileImage(url) || isMobbinSignedFileRawImage(url))
+  );
+}
+
+export function isMobbinSignedFileImage(url: string): boolean {
+  return Boolean(url) && MOBBIN_SIGNED_FILE_IMAGE_REGEX.test(url);
+}
+
+export function isMobbinSignedFileRawImage(url: string): boolean {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === 'bytescale.mobbin.com' &&
+      MOBBIN_SIGNED_FILE_RAW_PATH_REGEX.test(parsed.pathname) &&
+      parsed.searchParams.has('enc')
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeSignedFileToRawUrl(url: string): string {
+  if (!url || !isMobbinSignedFileImage(url)) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (MOBBIN_SIGNED_FILE_IMAGE_PATH_REGEX.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace('/image/', '/raw/');
+    }
+
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function isMobbinVideoPoster(url: string): boolean {
@@ -25,6 +70,10 @@ export function isImageRepresentingVideo(url: string): boolean {
 export function normalizePresentationImageUrl(url: string): string {
   if (!url) {
     return url;
+  }
+
+  if (isMobbinSignedFileImage(url)) {
+    return normalizeSignedFileToRawUrl(url);
   }
 
   try {
@@ -52,6 +101,10 @@ export function normalizePresentationImageUrl(url: string): string {
 export function normalizeDownloadImageUrl(url: string): string {
   if (!url) {
     return url;
+  }
+
+  if (isMobbinSignedFileImage(url)) {
+    return normalizeSignedFileToRawUrl(url);
   }
 
   try {

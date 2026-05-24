@@ -44,6 +44,12 @@ class ContentController {
 
   private enabled = false;
 
+  private readonly throttledScan = throttle(() => {
+    if (this.enabled) {
+      this.runScan();
+    }
+  }, 1200);
+
   private readonly batchManager = new BatchDownloadManager(() => this.runScan());
 
   private readonly unwatchEnabled = watchEnabled((enabled) => {
@@ -70,18 +76,26 @@ class ContentController {
 
     this.runScan();
 
-    const throttledScan = throttle(() => this.runScan(), 1200);
-    this.observer = new MutationObserver(() => throttledScan());
+    this.observer = new MutationObserver(() => this.throttledScan());
     this.observer.observe(document.body, {
+      attributeFilter: ['src', 'srcset', 'sizes', 'poster', 'class', 'style', 'loading'],
+      attributes: true,
       childList: true,
       subtree: true,
     });
+
+    window.addEventListener('scroll', this.handleViewportChange, { passive: true });
+    window.addEventListener('resize', this.handleViewportChange, { passive: true });
+    window.addEventListener('load', this.handleMediaLoad, true);
   }
 
   disable(): void {
     this.enabled = false;
     this.observer?.disconnect();
     this.observer = null;
+    window.removeEventListener('scroll', this.handleViewportChange);
+    window.removeEventListener('resize', this.handleViewportChange);
+    window.removeEventListener('load', this.handleMediaLoad, true);
     this.batchManager.resetUi();
     removeInjectedUi();
     removeRuntimeStyles();
@@ -102,6 +116,25 @@ class ContentController {
     scanDocument();
     this.batchManager.ensureHeaderButton();
   }
+
+  private readonly handleViewportChange = (): void => {
+    if (!this.enabled) {
+      return;
+    }
+
+    this.throttledScan();
+  };
+
+  private readonly handleMediaLoad = (event: Event): void => {
+    if (
+      !this.enabled ||
+      !(event.target instanceof HTMLImageElement || event.target instanceof HTMLVideoElement)
+    ) {
+      return;
+    }
+
+    this.throttledScan();
+  };
 }
 
 const controller = new ContentController();
