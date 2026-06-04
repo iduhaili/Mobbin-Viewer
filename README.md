@@ -1,5 +1,5 @@
 # Mobbin Viewer
-![LOGO](https://github.com/A2coffee/Mobbin-Viewer/blob/main/public/mobbin-helper-icon-72.png?raw=true "LOGO")
+![LOGO](https://github.com/A2coffee/Mobbin-Viewer/blob/main/public/mobbin-helper-icon-72.png?raw=true)
 
 Mobbin Viewer 是一个面向 `mobbin.com` 的 Chrome 扩展，提供去模糊浏览、全屏查看、复制素材与批量下载能力。  
 
