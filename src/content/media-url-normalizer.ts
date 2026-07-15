@@ -73,7 +73,7 @@ export function normalizePresentationImageUrl(url: string): string {
   }
 
   if (isMobbinSignedFileImage(url)) {
-    return normalizeSignedFileToRawUrl(url);
+    return url;
   }
 
   try {
