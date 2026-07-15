@@ -6,6 +6,7 @@ import iconZipNetworkErrorSvg from '../shared/icons/icon_zip_network error.svg?r
 import iconZipSuccessfulSvg from '../shared/icons/icon_zip_successful.svg?raw';
 import iconZipSvg from '../shared/icons/icon_zip.svg?raw';
 import type { DownloadStatusVariant } from '../shared/download-status';
+import { convertImageBlobToPng, fetchMediaBlob } from './media-blob';
 import { getDownloadUrlForMedia } from './media-url-normalizer';
 
 const CONTROL_SELECTOR = '.mobbin-viewer-controls';
@@ -83,12 +84,13 @@ async function downloadMedia(media: HTMLImageElement | HTMLVideoElement): Promis
     throw new Error('没有可下载的资源地址。');
   }
 
-  const extension = media instanceof HTMLVideoElement ? 'mp4' : 'png';
+  const isVideo = media instanceof HTMLVideoElement;
+  const extension = isVideo ? 'mp4' : 'png';
   const filename = `mobbin-${Date.now()}.${extension}`;
 
   try {
-    const response = await fetch(url);
-    const blob = await response.blob();
+    const fetchedBlob = await fetchMediaBlob(url);
+    const blob = isVideo ? fetchedBlob : await convertImageBlobToPng(fetchedBlob);
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
@@ -97,7 +99,11 @@ async function downloadMedia(media: HTMLImageElement | HTMLVideoElement): Promis
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(objectUrl);
-  } catch {
+  } catch (error) {
+    if (!isVideo) {
+      throw error;
+    }
+
     const fallback = document.createElement('a');
     fallback.href = url;
     fallback.download = filename;
@@ -117,9 +123,8 @@ async function copyImage(image: HTMLImageElement, button: HTMLButtonElement): Pr
   button.innerHTML = '<span class="mobbin-viewer-status-spinner"></span><span>复制中</span>';
 
   try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const pngBlob = blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' });
+    const blob = await fetchMediaBlob(url);
+    const pngBlob = await convertImageBlobToPng(blob);
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
     button.innerHTML = `${iconZipSuccessfulSvg}<span>已复制</span>`;
     window.setTimeout(() => {
@@ -154,6 +159,7 @@ export function openLightbox(sourceUrl: string, kind: 'image' | 'video'): void {
   spinner.innerHTML = '<span class="mobbin-viewer-status-spinner"></span>资源加载中...';
 
   let mediaElement: HTMLImageElement | HTMLVideoElement;
+  let lightboxObjectUrl: string | null = null;
 
   if (kind === 'video') {
     const video = document.createElement('video');
@@ -167,17 +173,37 @@ export function openLightbox(sourceUrl: string, kind: 'image' | 'video'): void {
     mediaElement = video;
   } else {
     const image = document.createElement('img');
-    image.src = sourceUrl;
     image.alt = 'Mobbin 预览图';
     image.className = 'mobbin-viewer-lightbox-media';
     image.addEventListener('load', () => spinner.remove(), { once: true });
+    image.addEventListener(
+      'error',
+      () => {
+        spinner.textContent = '资源加载失败';
+      },
+      { once: true },
+    );
     mediaElement = image;
+
+    void (async () => {
+      try {
+        const blob = await fetchMediaBlob(sourceUrl);
+        lightboxObjectUrl = URL.createObjectURL(blob);
+        image.src = lightboxObjectUrl;
+      } catch (error) {
+        spinner.textContent = error instanceof Error ? `资源加载失败：${error.message}` : '资源加载失败';
+      }
+    })();
   }
 
   const cleanups: Array<() => void> = [];
   const close = (): void => {
     overlay.classList.remove('is-visible');
     cleanupLightboxListeners(cleanups);
+    if (lightboxObjectUrl) {
+      URL.revokeObjectURL(lightboxObjectUrl);
+      lightboxObjectUrl = null;
+    }
     window.setTimeout(() => overlay.remove(), 180);
   };
 

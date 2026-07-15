@@ -104,7 +104,7 @@ export function normalizeDownloadImageUrl(url: string): string {
   }
 
   if (isMobbinSignedFileImage(url)) {
-    return normalizeSignedFileToRawUrl(url);
+    return url;
   }
 
   try {

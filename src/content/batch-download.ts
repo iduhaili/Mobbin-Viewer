@@ -33,6 +33,7 @@ import {
   type DownloadToastState,
   type DownloadToastVariant,
 } from './overlay-ui';
+import { convertImageBlobToPng } from './media-blob';
 
 type BatchAssetKind = 'image' | 'video';
 type DownloadRunMode = 'initial' | 'retry';
@@ -728,7 +729,9 @@ export class BatchDownloadManager {
       const startedAt = Date.now();
 
       try {
-        const blob = await this.fetchAsset(asset);
+        const downloadedBlob = await this.fetchAsset(asset);
+        const blob =
+          asset.kind === 'image' ? await convertImageBlobToPng(downloadedBlob) : downloadedBlob;
         this.recordAttempt(asset, mode, attemptInPhase, asset.url, startedAt, 'success');
         return blob;
       } catch (error) {
