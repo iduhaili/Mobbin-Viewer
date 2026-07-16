@@ -2,8 +2,8 @@ const MOBBIN_IMAGE_REGEX =
   /https:\/\/bytescale\.mobbin\.com\/.*?\/(app_screens|content\/sites|app_overview|app_row_preview)\/[^?]+\.(png|jpg|jpeg|webp|mp4)/i;
 const MOBBIN_SIGNED_FILE_IMAGE_REGEX =
   /https:\/\/bytescale\.mobbin\.com\/.*?\/mobbin\.com\/prod\/file\.webp\?[^#]*\benc=/i;
-const MOBBIN_SIGNED_FILE_IMAGE_PATH_REGEX = /\/image\/mobbin\.com\/prod\/file\.webp$/i;
-const MOBBIN_SIGNED_FILE_RAW_PATH_REGEX = /\/raw\/mobbin\.com\/prod\/file\.webp$/i;
+const MOBBIN_HIGH_RES_SCREEN_IMAGE_REGEX =
+  /https:\/\/bytescale\.mobbin\.com\/.*?\/mobbin\.com\/prod\/content\/(app_screens|sites)\/[^?]+\.(png|jpg|jpeg|webp)/i;
 const MOBBIN_VIDEO_REGEX =
   /https:\/\/bytescale\.mobbin\.com\/.*?\/(app_flow_videos|content\/sites)\/[^?]+\.mp4/i;
 const MOBBIN_VIDEO_HOST_REGEX = /https:\/\/bytescale\.mobbin\.com\//i;
@@ -13,7 +13,9 @@ const WATERMARK_PATH = '/mobbin.com/prod/watermark/1.0/78e3a61c-21ac-490e-b93d-c
 export function isMobbinScreenImage(url: string): boolean {
   return (
     Boolean(url) &&
-    (MOBBIN_IMAGE_REGEX.test(url) || isMobbinSignedFileImage(url) || isMobbinSignedFileRawImage(url))
+    (MOBBIN_IMAGE_REGEX.test(url) ||
+      isMobbinSignedFileImage(url) ||
+      isMobbinHighResolutionScreenImage(url))
   );
 }
 
@@ -21,38 +23,8 @@ export function isMobbinSignedFileImage(url: string): boolean {
   return Boolean(url) && MOBBIN_SIGNED_FILE_IMAGE_REGEX.test(url);
 }
 
-export function isMobbinSignedFileRawImage(url: string): boolean {
-  if (!url) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === 'bytescale.mobbin.com' &&
-      MOBBIN_SIGNED_FILE_RAW_PATH_REGEX.test(parsed.pathname) &&
-      parsed.searchParams.has('enc')
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function normalizeSignedFileToRawUrl(url: string): string {
-  if (!url || !isMobbinSignedFileImage(url)) {
-    return url;
-  }
-
-  try {
-    const parsed = new URL(url);
-    if (MOBBIN_SIGNED_FILE_IMAGE_PATH_REGEX.test(parsed.pathname)) {
-      parsed.pathname = parsed.pathname.replace('/image/', '/raw/');
-    }
-
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+export function isMobbinHighResolutionScreenImage(url: string): boolean {
+  return Boolean(url) && MOBBIN_HIGH_RES_SCREEN_IMAGE_REGEX.test(url);
 }
 
 export function isMobbinVideoPoster(url: string): boolean {
@@ -73,6 +45,10 @@ export function normalizePresentationImageUrl(url: string): string {
   }
 
   if (isMobbinSignedFileImage(url)) {
+    return url;
+  }
+
+  if (isMobbinHighResolutionScreenImage(url)) {
     return url;
   }
 
@@ -104,6 +80,10 @@ export function normalizeDownloadImageUrl(url: string): string {
   }
 
   if (isMobbinSignedFileImage(url)) {
+    return url;
+  }
+
+  if (isMobbinHighResolutionScreenImage(url)) {
     return url;
   }
 

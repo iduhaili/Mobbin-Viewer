@@ -1,8 +1,8 @@
 import { PROCESSED_MEDIA_ATTR, PROCESSED_MEDIA_SOURCE_ATTR } from '../shared/constants';
+import { resolveHighResImageUrl } from './flow-image-map';
 import {
   convertPosterToVideoSrc,
   isImageRepresentingVideo,
-  isMobbinSignedFileRawImage,
   isMobbinScreenImage,
   isMobbinVideoPoster,
   isMobbinVideoSource,
@@ -16,6 +16,10 @@ import {
   isInExcludedPanel,
   removeBlurFromAncestors,
 } from './unblur-engine';
+
+const pendingHighResUrls = new Set<string>();
+const failedHighResUrls = new Set<string>();
+const loadedHighResUrls = new Set<string>();
 
 function ensureContainerControls(media: HTMLImageElement | HTMLVideoElement): void {
   if (isInDetailView(media) || isInExcludedPanel(media)) {
@@ -102,28 +106,61 @@ function normalizePictureSources(image: HTMLImageElement): void {
 }
 
 function applyNormalizedImageSource(image: HTMLImageElement, source: string): void {
-  const normalized = normalizePresentationImageUrl(source);
+  const resolved = resolveHighResImageUrl(source);
+  const normalized = normalizePresentationImageUrl(resolved);
   const previousNormalized = image.getAttribute(PROCESSED_MEDIA_SOURCE_ATTR);
-  const normalizedIsRawSignedFile = isMobbinSignedFileRawImage(normalized);
 
-  if (!normalizedIsRawSignedFile) {
+  if (resolved === source) {
     normalizePictureSources(image);
   }
 
   const imageSrcset = image.getAttribute('srcset');
-  if (imageSrcset && !normalizedIsRawSignedFile) {
+  if (imageSrcset && resolved === source) {
     const normalizedSrcset = normalizeSrcset(imageSrcset);
     if (normalizedSrcset !== imageSrcset) {
       image.setAttribute('srcset', normalizedSrcset);
     }
   }
 
-  if (normalizedIsRawSignedFile) {
-    image.removeAttribute('srcset');
-    image.removeAttribute('sizes');
-  }
-
   if (previousNormalized !== normalized || image.src !== normalized) {
+    if (resolved !== source) {
+      if (failedHighResUrls.has(normalized)) {
+        return;
+      }
+
+      if (!loadedHighResUrls.has(normalized)) {
+        if (!pendingHighResUrls.has(normalized)) {
+          pendingHighResUrls.add(normalized);
+
+          const probe = new Image();
+          probe.decoding = 'async';
+          probe.onload = () => {
+            pendingHighResUrls.delete(normalized);
+            loadedHighResUrls.add(normalized);
+
+            if (!image.isConnected || image.src === normalized) {
+              return;
+            }
+
+            image.removeAttribute('srcset');
+            image.removeAttribute('sizes');
+            image.src = normalized;
+            image.setAttribute(PROCESSED_MEDIA_SOURCE_ATTR, normalized);
+          };
+          probe.onerror = () => {
+            pendingHighResUrls.delete(normalized);
+            failedHighResUrls.add(normalized);
+          };
+          probe.src = normalized;
+        }
+
+        return;
+      }
+
+      image.removeAttribute('srcset');
+      image.removeAttribute('sizes');
+    }
+
     image.src = normalized;
     image.setAttribute(PROCESSED_MEDIA_SOURCE_ATTR, normalized);
   }

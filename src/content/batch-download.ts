@@ -74,6 +74,7 @@ const RETRY_CONCURRENCY = 2;
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_ATTEMPTS_PER_PHASE = 2;
 const RETRY_BACKOFF_MS = [600, 1_800] as const;
+const HEADER_ACTION_LABELS = ['rate', 'save', 'saved', '评分', '保存', '已保存', '节省'];
 
 class AssetDownloadError extends Error {
   readonly kind: DownloadFailureKind;
@@ -200,6 +201,105 @@ function createFailureMessage(kind: DownloadFailureKind, httpStatus?: number): s
   }
 }
 
+function isVisibleElement(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function getButtonLabel(button: HTMLButtonElement): string {
+  return [
+    button.textContent,
+    button.getAttribute('aria-label'),
+    button.getAttribute('title'),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase();
+}
+
+function findHeaderAnchorButton(buttons: HTMLButtonElement[]): HTMLButtonElement | null {
+  const visibleButtons = buttons.filter(isVisibleElement);
+  const explicitAction = visibleButtons.find((button) => {
+    const label = getButtonLabel(button);
+    return HEADER_ACTION_LABELS.some((actionLabel) => label.includes(actionLabel));
+  });
+
+  if (explicitAction) {
+    return explicitAction;
+  }
+
+  return visibleButtons.find((button) => {
+    const label = getButtonLabel(button).replace(/\s/g, '');
+    return (
+      label === '...' ||
+      label === '…' ||
+      label.includes('more') ||
+      label.includes('更多')
+    );
+  }) ?? null;
+}
+
+function parseSrcsetUrls(srcset: string): string[] {
+  return srcset
+    .split(',')
+    .map((candidate) => candidate.trim().split(/\s+/)[0] ?? '')
+    .filter(Boolean);
+}
+
+function extractCssUrls(value: string): string[] {
+  return Array.from(value.matchAll(/url\((['"]?)(.*?)\1\)/gi))
+    .map((match) => match[2])
+    .filter(Boolean);
+}
+
+function collectCandidateImageUrls(element: Element): string[] {
+  const candidates: string[] = [];
+
+  const push = (value: string | null | undefined): void => {
+    if (value) {
+      candidates.push(value);
+    }
+  };
+
+  if (element instanceof HTMLImageElement) {
+    push(element.currentSrc);
+    push(element.src);
+    parseSrcsetUrls(element.getAttribute('srcset') ?? '').forEach(push);
+
+    const picture = element.closest('picture');
+    picture?.querySelectorAll('source[srcset]').forEach((source) => {
+      parseSrcsetUrls(source.getAttribute('srcset') ?? '').forEach(push);
+    });
+  }
+
+  [
+    'src',
+    'href',
+    'data-src',
+    'data-original',
+    'data-lazy-src',
+    'data-image',
+    'data-url',
+  ].forEach((attribute) => push(element.getAttribute(attribute)));
+
+  const inlineStyle = element.getAttribute('style') ?? '';
+  extractCssUrls(inlineStyle).forEach(push);
+
+  if (element instanceof HTMLElement) {
+    extractCssUrls(getComputedStyle(element).backgroundImage).forEach(push);
+  }
+
+  return candidates.filter(isMobbinScreenImage);
+}
+
+function collectPerformanceImageUrls(): string[] {
+  return performance
+    .getEntriesByType('resource')
+    .map((entry) => entry.name)
+    .filter(isMobbinScreenImage);
+}
+
 function buildQuerySignature(url: string | null): {
   querySignature?: string;
   hasWatermarkParam?: boolean;
@@ -257,17 +357,18 @@ export class BatchDownloadManager {
     }
 
     const buttons = Array.from(document.querySelectorAll('button'));
-    const rateButton = buttons.find((button) => button.textContent?.trim() === 'Rate');
+    const anchorButton = findHeaderAnchorButton(buttons);
 
-    if (!rateButton?.parentElement) {
+    if (!anchorButton?.parentElement) {
+      this.ensureFloatingButton();
       return;
     }
 
-    const container = rateButton.parentElement;
+    const container = anchorButton.parentElement;
     const button = document.createElement('button');
     button.id = HEADER_BUTTON_ID;
     button.type = 'button';
-    button.className = rateButton.className;
+    button.className = anchorButton.className;
     button.style.width = '160px';
     button.style.height = '44px';
     button.textContent = '打包下载';
@@ -280,7 +381,11 @@ export class BatchDownloadManager {
 
     const moreButton = Array.from(container.children).find(
       (element) =>
-        element instanceof HTMLButtonElement && element !== rateButton && element.querySelector('svg'),
+        element instanceof HTMLButtonElement &&
+        element !== anchorButton &&
+        (getButtonLabel(element).replace(/\s/g, '') === '...' ||
+          getButtonLabel(element).replace(/\s/g, '') === '…' ||
+          element.querySelector('svg')),
     );
 
     if (moreButton instanceof HTMLElement) {
@@ -290,12 +395,32 @@ export class BatchDownloadManager {
       return;
     }
 
-    if (rateButton.nextSibling) {
-      container.insertBefore(button, rateButton.nextSibling);
+    if (anchorButton.nextSibling) {
+      container.insertBefore(button, anchorButton.nextSibling);
       return;
     }
 
     container.appendChild(button);
+  }
+
+  private ensureFloatingButton(): void {
+    if (document.getElementById(HEADER_BUTTON_ID)) {
+      return;
+    }
+
+    const button = document.createElement('button');
+    button.id = HEADER_BUTTON_ID;
+    button.type = 'button';
+    button.className = 'mobbin-viewer-floating-download';
+    button.textContent = '下载全部图片';
+    button.title = '扫描当前页面并打包下载全部图片';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.start();
+    });
+
+    document.body.appendChild(button);
   }
 
   resetUi(): void {
@@ -380,6 +505,15 @@ export class BatchDownloadManager {
   private clearDownloadState(): void {
     this.clearStateClearTimer();
     void this.clearPublishedDownloadState();
+  }
+
+  private primeLazyImages(): void {
+    document.querySelectorAll('img').forEach((node) => {
+      const image = node as HTMLImageElement;
+      image.loading = 'eager';
+      image.fetchPriority = 'high';
+      image.decoding = 'async';
+    });
   }
 
   private setDownloadContext(
@@ -484,14 +618,13 @@ export class BatchDownloadManager {
       });
     };
 
-    document.querySelectorAll('img').forEach((node) => {
-      const image = node as HTMLImageElement;
-      const source = image.currentSrc || image.src;
+    document.querySelectorAll('*').forEach((node) => {
+      collectCandidateImageUrls(node).forEach((source) => {
+        pushAsset(normalizeDownloadImageUrl(source), 'image');
+      });
+    });
 
-      if (!isMobbinScreenImage(source)) {
-        return;
-      }
-
+    collectPerformanceImageUrls().forEach((source) => {
       pushAsset(normalizeDownloadImageUrl(source), 'image');
     });
 
@@ -1147,7 +1280,11 @@ export class BatchDownloadManager {
 
     try {
       this.renderState('scrolling', '准备扫描当前页面...');
+      this.primeLazyImages();
       await this.scrollToBottom();
+      this.primeLazyImages();
+      this.onRescan();
+      await wait(500);
       const assets = this.collectAssets();
       this.activeAssets = assets;
       this.initializeReportSession(assets);

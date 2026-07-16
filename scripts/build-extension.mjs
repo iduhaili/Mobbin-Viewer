@@ -96,7 +96,59 @@ async function buildContent() {
   await renameIfExists('content', 'content.js');
 }
 
+async function buildApiCapture() {
+  await build({
+    configFile: false,
+    publicDir: false,
+    build: {
+      outDir: distDir,
+      emptyOutDir: false,
+      minify: false,
+      lib: {
+        entry: path.resolve(projectRoot, 'src/content/api-capture.ts'),
+        formats: ['iife'],
+        name: 'MobbinViewerApiCapture',
+        fileName: () => 'api-capture'
+      },
+      rollupOptions: {
+        output: {
+          inlineDynamicImports: true
+        }
+      }
+    }
+  });
+
+  await renameIfExists('api-capture', 'api-capture.js');
+}
+
+async function buildApiCapturePage() {
+  await build({
+    configFile: false,
+    publicDir: false,
+    build: {
+      outDir: distDir,
+      emptyOutDir: false,
+      minify: false,
+      lib: {
+        entry: path.resolve(projectRoot, 'src/content/api-capture-page.ts'),
+        formats: ['iife'],
+        name: 'MobbinViewerApiCapturePage',
+        fileName: () => 'api-capture-page'
+      },
+      rollupOptions: {
+        output: {
+          inlineDynamicImports: true
+        }
+      }
+    }
+  });
+
+  await renameIfExists('api-capture-page', 'api-capture-page.js');
+}
+
 await fs.rm(distDir, { recursive: true, force: true });
 await buildPopup();
 await buildBackground();
+await buildApiCapturePage();
+await buildApiCapture();
 await buildContent();

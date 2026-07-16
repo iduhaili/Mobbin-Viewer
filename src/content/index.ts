@@ -87,6 +87,7 @@ class ContentController {
     window.addEventListener('scroll', this.handleViewportChange, { passive: true });
     window.addEventListener('resize', this.handleViewportChange, { passive: true });
     window.addEventListener('load', this.handleMediaLoad, true);
+    window.addEventListener('message', this.handlePageMessage);
   }
 
   disable(): void {
@@ -96,6 +97,7 @@ class ContentController {
     window.removeEventListener('scroll', this.handleViewportChange);
     window.removeEventListener('resize', this.handleViewportChange);
     window.removeEventListener('load', this.handleMediaLoad, true);
+    window.removeEventListener('message', this.handlePageMessage);
     this.batchManager.resetUi();
     removeInjectedUi();
     removeRuntimeStyles();
@@ -134,6 +136,16 @@ class ContentController {
     }
 
     this.throttledScan();
+  };
+
+  private readonly handlePageMessage = (event: MessageEvent): void => {
+    if (
+      this.enabled &&
+      event.source === window &&
+      event.data?.source === 'mobbin-viewer-image-map'
+    ) {
+      this.throttledScan();
+    }
   };
 }
 

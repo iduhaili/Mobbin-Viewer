@@ -24,8 +24,62 @@ export function ensureRuntimeStyles(): void {
       content: none !important;
     }
 
+    .mobbin-viewer-host::before,
+    .mobbin-viewer-host::after,
+    .mobbin-viewer-host *::before,
+    .mobbin-viewer-host *::after,
+    a:has(.mobbin-viewer-host)::before,
+    a:has(.mobbin-viewer-host)::after {
+      display: none !important;
+      content: none !important;
+      filter: none !important;
+      backdrop-filter: none !important;
+      background: transparent !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    .mobbin-viewer-host [class*="blur"],
+    .mobbin-viewer-host [class*="backdrop-blur"],
+    a:has(.mobbin-viewer-host)[class*="blur"],
+    a:has(.mobbin-viewer-host)[class*="backdrop-blur"] {
+      filter: none !important;
+      backdrop-filter: none !important;
+      background: transparent !important;
+    }
+
     .mobbin-viewer-force-show {
       display: revert !important;
+    }
+
+    .mobbin-viewer-floating-download {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 2147483645;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 132px;
+      height: 46px;
+      padding: 0 18px;
+      border: none;
+      border-radius: 999px;
+      background: #111111;
+      color: #ffffff;
+      cursor: pointer;
+      font: 700 14px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+      transition:
+        transform 0.16s ease,
+        background 0.16s ease,
+        box-shadow 0.16s ease;
+    }
+
+    .mobbin-viewer-floating-download:hover {
+      background: #000000;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
     }
 
     .mobbin-viewer-host {
@@ -345,16 +399,33 @@ export function removeRuntimeStyles(): void {
 
 export function removeBlurFromAncestors(
   element: HTMLElement,
-  maxLevels = 8,
+  maxLevels = 24,
 ): void {
-  element.style.opacity = '1';
-  element.style.visibility = 'visible';
-  element.style.filter = 'none';
+  element.classList.add('mobbin-viewer-unblur');
+  element.style.setProperty('opacity', '1', 'important');
+  element.style.setProperty('visibility', 'visible', 'important');
+  element.style.setProperty('filter', 'none', 'important');
+  element.style.setProperty('backdrop-filter', 'none', 'important');
+  element.style.setProperty('--tw-blur', 'none');
+  element.style.setProperty('--tw-backdrop-blur', 'none');
 
   let current: HTMLElement | null = element.parentElement;
   let level = 0;
 
   while (current && level < maxLevels) {
+    const computedStyle = getComputedStyle(current);
+    const looksLikeScreenShell =
+      current.classList.contains('screen-inset-border') ||
+      current.classList.contains('mobile-screen-border-radius') ||
+      current.classList.contains('web-screen-border-radius') ||
+      current.dataset.sentryComponent === 'FlowCellScreen';
+
+    if (looksLikeScreenShell) {
+      current.classList.add('mobbin-viewer-unblur');
+      current.style.setProperty('filter', 'none', 'important');
+      current.style.setProperty('backdrop-filter', 'none', 'important');
+    }
+
     if (current.classList.contains('pointer-events-none')) {
       current.classList.remove('pointer-events-none');
       current.style.pointerEvents = 'auto';
@@ -364,8 +435,10 @@ export function removeBlurFromAncestors(
     const hasBlurClass = classNames.some((className) =>
       className.includes('blur') || className.includes('backdrop-blur'),
     );
+    const hasComputedBlur =
+      computedStyle.filter !== 'none' || computedStyle.backdropFilter !== 'none';
 
-    if (hasBlurClass) {
+    if (hasBlurClass || hasComputedBlur) {
       current.style.setProperty('filter', 'none', 'important');
       current.style.setProperty('backdrop-filter', 'none', 'important');
       current.style.setProperty('--tw-backdrop-blur', 'none');

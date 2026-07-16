@@ -25,7 +25,19 @@
   },
   "permissions": ["storage", "activeTab", "tabs", "downloads"],
   "host_permissions": ["https://mobbin.com/*", "https://*.mobbin.com/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["api-capture-page.js"],
+      "matches": ["https://mobbin.com/*", "https://*.mobbin.com/*"]
+    }
+  ],
   "content_scripts": [
+    {
+      "matches": ["https://mobbin.com/*", "https://*.mobbin.com/*"],
+      "js": ["api-capture.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
     {
       "matches": ["https://mobbin.com/*", "https://*.mobbin.com/*"],
       "js": ["content.js"],
